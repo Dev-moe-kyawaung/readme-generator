@@ -1,0 +1,75 @@
+name: Auto-Commit README Updates
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      generate_readme:
+        description: 'Generate README.md'
+        required: false
+        default: 'true'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Generate README (if needed)
+        run: |
+          if [ -f scripts/generate-readme.js ]; then
+            node scripts/generate-readme.js
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for changes
+        id: git-check
+        run: |
+          git diff --exit-code || echo "has_changes=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push changes
+        if: steps.git-check.outputs.has_changes == 'true'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'chore: auto-update README [skip ci]'
+          commit_user_name: 'github-actions[bot]'
+          commit_user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_author: 'github-actions[bot] <github-actions[bot]@users.noreply.github.com>'
+          branch: main
+          push_options: '--force'
+
+      - name: Create Pull Request (if on feature branch)
+        if: github.ref != 'refs/heads/main'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          title: 'chore: auto-update README'
+          body: |
+            Automated README update from GitHub Actions
+            
+            This PR was created automatically by the auto-commit workflow.
+          branch: auto-update-readme
+          base: main
+          labels: automated-pr
